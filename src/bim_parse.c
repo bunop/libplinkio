@@ -9,7 +9,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <csv.h>
+#include "private/utility.h"
+#include "private/plink_txt_parse.h"
 
 #include <plinkio/utarray.h>
 #include <plinkio/bim.h>
@@ -29,9 +30,9 @@
 /**
  * Buffer size for reading CSV file.
  */
-#define BUFFER_SIZE 4096
+#define LIBPLINKIO_BIM_PARSE_BUFFER_SIZE_ 4096
 
-struct state_t
+struct bim_state_t
 {
     /**
      * The next field to parse.
@@ -157,12 +158,13 @@ parse_bp_position(const char *field, size_t length, pio_status_t *status)
  *
  * @param field Csv field.
  * @param field_length Length of the field.
- * @param data A state_t struct.
+ * @param data A bim_state_t struct.
  */
 static void
-new_field(void *field, size_t field_length, void *data)
+bim_new_field(char *field, size_t field_length, size_t field_num, void *data)
 {
-    struct state_t *state = (struct state_t *) data;
+    UNUSED_PARAM(field_num);
+    struct bim_state_t *state = (struct bim_state_t *) data;
     pio_status_t status;
     char *buffer;
 
@@ -182,19 +184,19 @@ new_field(void *field, size_t field_length, void *data)
             state->cur_locus.chromosome = parse_str( buffer, field_length, &status );
             break;
         case 1:
-            state->cur_locus.name = parse_str( buffer, field_length, &status );
+            state->cur_locus.name = libplinkio_parse_str_( buffer, field_length, &status );
             break;
         case 2:
-            state->cur_locus.position = parse_genetic_position( buffer, field_length, &status );
+            state->cur_locus.position = libplinkio_parse_genetic_position_( buffer, field_length, &status );
             break;
         case 3:
-            state->cur_locus.bp_position = parse_bp_position( buffer, field_length, &status );
+            state->cur_locus.bp_position = libplinkio_parse_bp_position_( buffer, field_length, &status );
             break;
         case 4:
-            state->cur_locus.allele1 = parse_str( buffer, field_length, &status );
+            state->cur_locus.allele1 = libplinkio_parse_str_( buffer, field_length, &status );
             break;
         case 5:
-            state->cur_locus.allele2 = parse_str( buffer, field_length, &status );
+            state->cur_locus.allele2 = libplinkio_parse_str_( buffer, field_length, &status );
             break;
         default:
             status = PIO_ERROR;
@@ -219,14 +221,15 @@ new_field(void *field, size_t field_length, void *data)
  * has been found.
  *
  * @param number The row number.
- * @param data A state_t struct.
+ * @param data A bim_state_t struct.
  */
 static void
-new_row(__attribute__((unused)) int number, void *data)
+bim_new_row(size_t number, void *data)
 {
-    struct state_t *state = (struct state_t *) data;
+    UNUSED_PARAM(number);
+    struct bim_state_t *state = (struct bim_state_t *) data;
 
-    if( state->field != -1 )
+    if( state->field == 6 )
     {
         state->cur_locus.pio_id = utarray_len( state->locus );
         utarray_push_back( state->locus, &state->cur_locus );
@@ -237,24 +240,28 @@ new_row(__attribute__((unused)) int number, void *data)
 pio_status_t
 parse_loci(FILE *bim_fp, UT_array *locus)
 {
-    char read_buffer[ BUFFER_SIZE ];
-    struct state_t state = { 0 };
-    struct csv_parser parser;
+    char read_buffer[ LIBPLINKIO_BIM_PARSE_BUFFER_SIZE_ ];
+    struct bim_state_t state = { 0 };
+    libplinkio_txt_parser_private_t parser = { 0 };
 
     state.locus = locus;
 
-    csv_init( &parser, 0 );
-    csv_set_delim_func( &parser, bim_is_delim );
-    while( !feof( bim_fp ) )
-    {
-        int bytes_read = fread( &read_buffer[ 0 ], sizeof( char ), BUFFER_SIZE, bim_fp );
-        csv_parse( &parser, read_buffer, bytes_read, &new_field, &new_row, (void *) &state );
-    }
+    libplinkio_txt_parser_init_( &parser );
+    do {
+        size_t bytes_read = fread( read_buffer, sizeof( char ), LIBPLINKIO_BIM_PARSE_BUFFER_SIZE_ - 1, bim_fp );
+        if (ferror(bim_fp)) goto error;
+        read_buffer[bytes_read] = '\0';
+        libplinkio_txt_parse_( &parser, read_buffer, bytes_read, &bim_new_field, &bim_new_row, (void *) &state );
+    } while( !feof( bim_fp ) );
 
-    csv_fini( &parser, new_field, new_row, (void *) &state );
-    csv_free( &parser );
+    libplinkio_txt_parse_fini_( &parser, &bim_new_field, &bim_new_row, (void *) &state );
+    libplinkio_txt_parser_free_( &parser );
     
-    return ( state.any_error == 0 ) ? PIO_OK : PIO_ERROR;
+    if ( state.any_error != 0 ) goto error;
+    return PIO_OK;
+
+error:
+    return PIO_ERROR;
 }
 
 pio_status_t

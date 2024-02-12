@@ -1,4 +1,4 @@
+include src/private/*.h
 include src/plinkio/*.h
-include libs/libcsv/inc/*.h
-include py-plinkio/*.h
+include py-plinkio/src/cplinkio/*.h
 include README.rst

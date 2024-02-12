@@ -1,34 +1,29 @@
-from setuptools import setup, find_packages, Extension
-from codecs import open
-from os import path
+from setuptools import setup, Extension
 import os
 import glob
-
-here = path.abspath(path.dirname(__file__))
-
-# Get the long description from the relevant file
-with open(path.join(here, "README.rst"), encoding="utf-8") as f:
-    long_description = f.read()
+import sys
 
 libplinkio_src_dir = "src"
-libplinkio_include_dir = os.path.join(libplinkio_src_dir)
+libplinkio_include_dir = libplinkio_src_dir
 libplinkio_src_files = glob.glob(os.path.join(libplinkio_src_dir, "*.c"))
 
-libcsv_root_dir = os.path.join("libs", "libcsv")
-libcsv_src_dir = os.path.join(libcsv_root_dir, "src")
-libcsv_include_dir = os.path.join(libcsv_root_dir, "inc")
-libcsv_src_files = glob.glob(os.path.join(libcsv_src_dir, "*.c"))
-
-pyplinkio_src_dir = "py-plinkio"
+pyplinkio_src_dir = "py-plinkio/src/cplinkio"
 pyplinkio_include_dir = pyplinkio_src_dir
 pyplinkio_src_files = glob.glob(os.path.join(pyplinkio_src_dir, "*.c"))
 
+libraries = []
+if sys.platform == 'win32':
+    libraries.append("Bcrypt")
+
 cplinkio = Extension(
     "plinkio.cplinkio",
-    libplinkio_src_files + libcsv_src_files + pyplinkio_src_files,
+    libplinkio_src_files + pyplinkio_src_files,
     library_dirs=[],
-    include_dirs=[libplinkio_include_dir, libcsv_include_dir, pyplinkio_include_dir],
-    libraries=[],
+    include_dirs=[
+        libplinkio_include_dir,
+        pyplinkio_include_dir,
+    ],
+    libraries=libraries,
     language="c",
     extra_compile_args=[],
     define_macros=[],
@@ -85,18 +80,4 @@ setup(
     # $ pip install -e .[dev,test]
     extras_require={},
     ext_modules=[cplinkio],
-    # If there are data files included in your packages that need to be
-    # installed, specify them here.  If using Python 2.6 or less, then these
-    # have to be included in MANIFEST.in as well.
-    package_data={},
-    package_dir={"": "py-plinkio"},
-    # Although 'package_data' is the preferred approach, in some case you may
-    # need to place data files outside of your packages.
-    # see http://docs.python.org/3.4/distutils/setupscript.html#installing-additional-files
-    # In this case, 'data_file' will be installed into '<sys.prefix>/my_data'
-    data_files=[],
-    # To provide executable scripts, use entry points in preference to the
-    # "scripts" keyword. Entry points provide cross-platform support and allow
-    # pip to create the appropriate form of executable for the target platform.
-    entry_points={},
 )
