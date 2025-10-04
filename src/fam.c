@@ -7,14 +7,14 @@
  */
 
 #include <stdio.h>
-#if defined(_WIN32) || defined(_WIN64)
-#define bzero(s, n) memset((s), 0, (n))
-#endif
 
 #include <plinkio/utarray.h>
 #include <plinkio/fam.h>
 #include <plinkio/fam_parse.h>
 #include <plinkio/status.h>
+
+#include "private/fam.h"
+#include "private/sample.h"
 
 /**
  * Creates mock versions of IO functions to allow unit testing.
@@ -27,52 +27,13 @@
     #define fclose mock_fclose
 #endif
 
-/**
- * Sample destructor. Ensures that the allocated
- * strings are freed properly.
- *
- * @param element Pointer to a sample.
- */
-static void
-utarray_sample_dtor(void *element)
-{
-    struct pio_sample_t *sample = (struct pio_sample_t *) element;
-
-    if( sample->fid != NULL )
-    {
-        free( sample->fid );
-    }
-    if( sample->iid != NULL )
-    {
-        free( sample->iid );
-    }
-    if( sample->father_iid != NULL )
-    {
-        free( sample->father_iid );
-    }
-    if( sample->mother_iid != NULL )
-    {
-        free( sample->mother_iid );
-    }
-}
-
-/**
- * Properties of the sample array for dtarray.
- */
-UT_icd SAMPLE_ICD = {
-    sizeof( struct pio_sample_t ),
-    NULL,
-    NULL,
-    utarray_sample_dtor
-};
-
 pio_status_t
 fam_open(struct pio_fam_file_t *fam_file, const char *path)
 {
     pio_status_t status;
     FILE *fam_fp;
 
-    bzero( fam_file, sizeof( *fam_file ) );
+    memset( fam_file, 0, sizeof( *fam_file ) );
     fam_fp = fopen( path, "r" );
     if( fam_fp == NULL )
     {
@@ -80,7 +41,7 @@ fam_open(struct pio_fam_file_t *fam_file, const char *path)
     }
 
     fam_file->fp = fam_fp;
-    utarray_new( fam_file->sample, &SAMPLE_ICD );
+    utarray_new( fam_file->sample, &LIBPLINKIO_SAMPLE_ICD_ );
     status = parse_samples( fam_file->fp, fam_file->sample );
     
     fclose( fam_fp );
@@ -96,7 +57,7 @@ fam_create(struct pio_fam_file_t *fam_file, const char *path, struct pio_sample_
     FILE *fam_fp;
     struct pio_sample_t sample_copy;
 
-    bzero( fam_file, sizeof( *fam_file ) );
+    memset( fam_file, 0, sizeof( *fam_file ) );
     fam_fp = fopen( path, "w" );
     if( fam_fp == NULL )
     {
@@ -105,7 +66,7 @@ fam_create(struct pio_fam_file_t *fam_file, const char *path, struct pio_sample_
 
     fam_file->fp = fam_fp;
 
-    utarray_new( fam_file->sample, &SAMPLE_ICD );
+    utarray_new( fam_file->sample, &LIBPLINKIO_SAMPLE_ICD_ );
     for(i = 0; i < num_samples; i++)
     {
         if( write_sample( fam_fp, &samples[ i ] ) != PIO_OK )
@@ -156,4 +117,27 @@ fam_close(struct pio_fam_file_t *fam_file)
 
     fam_file->sample = NULL;
     fam_file->fp = NULL;
+}
+
+pio_status_t libplinkio_fam_link_samples_to_file_(libplinkio_samples_private_t samples, struct pio_fam_file_t* fam_file, const char* fam_path, _Bool is_tmp) {
+    FILE* fam_fp = NULL;
+    if (!is_tmp) {
+        fam_fp = fopen( fam_path, "w" );
+        if( fam_fp == NULL )
+        {
+            return PIO_ERROR;
+        }
+
+        for ( struct pio_sample_t* sample = libplinkio_get_front_sample_(samples); sample != NULL; sample = libplinkio_get_next_sample_(samples, sample) ) {
+            if( write_sample( fam_fp, sample ) != PIO_OK ) goto error;
+        }
+    }
+
+    fam_file->sample = samples.ptr;
+    fam_file->fp = fam_fp;
+    return PIO_OK;
+
+error:
+    if (fam_fp != NULL) fclose(fam_fp);
+    return PIO_ERROR;
 }

@@ -11,6 +11,8 @@ html/
 *.egg-info
 __pycache__
 dist
+*.pyd
+.tox/
 
 # editor settings
 .vscode/

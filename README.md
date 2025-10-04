@@ -42,9 +42,10 @@ and re-initialize it from scratch by downloading dependencies and compiling agai
 
 ### Installing to a standard location
 
-[CMake](https://cmake.org/) is required in order to compile the C libraries (mind
-to the final `.` after *CMake*, which stands for your current *project* local 
-directory):
+    mkdir build
+    cd build
+    cmake ../
+    make && make test && sudo make install
 
     cmake .
     make
@@ -53,10 +54,10 @@ directory):
 
 ### Installing to a custom location
 
-    cmake -DCMAKE_INSTALL_PREFIX:PATH=/path/to/plinkio .
-    make
-    make test
-    make install
+    mkdir build
+    cd build
+    cmake -D CMAKE_INSTALL_PREFIX=/path/to/plinkio ../
+    make && make test && make install
 
 ### Linking to your program
 

@@ -7,14 +7,14 @@
  */
 
 #include <stdio.h>
-#if defined(_WIN32) || defined(_WIN64)
-#define bzero(s, n) memset((s), 0, (n))
-#endif
 
 #include <plinkio/utarray.h>
 #include <plinkio/bim.h>
 #include <plinkio/bim_parse.h>
 #include <plinkio/status.h>
+
+#include "private/bim.h"
+#include "private/locus.h"
 
 /**
  * Creates mock versions of IO functions to allow unit testing.
@@ -66,7 +66,7 @@ bim_open(struct pio_bim_file_t *bim_file, const char *path)
 {
     int status;
     FILE *bim_fp;
-    bzero( bim_file, sizeof( *bim_file ) );
+    memset( bim_file, 0, sizeof( *bim_file ) );
     bim_fp = fopen( path, "r" );
     if( bim_fp == NULL )
     {
@@ -74,7 +74,7 @@ bim_open(struct pio_bim_file_t *bim_file, const char *path)
     }
 
     bim_file->fp = bim_fp;
-    utarray_new( bim_file->locus, &LOCUS_ICD );
+    utarray_new( bim_file->locus, &LIBPLINKIO_LOCUS_ICD_ );
     status = parse_loci( bim_file->fp, bim_file->locus );
 
     fclose( bim_fp );
@@ -87,7 +87,7 @@ pio_status_t
 bim_create(struct pio_bim_file_t *bim_file, const char *path)
 {
     FILE *bim_fp;
-    bzero( bim_file, sizeof( *bim_file ) );
+    memset( bim_file, 0, sizeof( *bim_file ) );
     bim_fp = fopen( path, "w" );
     if( bim_fp == NULL )
     {
@@ -95,7 +95,7 @@ bim_create(struct pio_bim_file_t *bim_file, const char *path)
     }
 
     bim_file->fp = bim_fp;
-    utarray_new( bim_file->locus, &LOCUS_ICD );
+    utarray_new( bim_file->locus, &LIBPLINKIO_LOCUS_ICD_ );
 
     return PIO_OK;
 }
@@ -150,4 +150,27 @@ bim_close(struct pio_bim_file_t *bim_file)
     utarray_free( bim_file->locus );
     bim_file->locus = NULL;
     bim_file->fp = NULL;
+}
+
+pio_status_t libplinkio_bim_link_loci_to_file_(libplinkio_loci_private_t loci, struct pio_bim_file_t* bim_file, const char* bim_path, _Bool is_tmp) {
+    FILE* bim_fp = NULL;
+    if (!is_tmp) {
+        bim_fp = fopen( bim_path, "w" );
+        if( bim_fp == NULL )
+        {
+            return PIO_ERROR;
+        }
+
+        for ( struct pio_locus_t* locus = libplinkio_get_front_locus_(loci); locus != NULL; locus = libplinkio_get_next_locus_(loci, locus) ) {
+            if( write_locus( bim_fp, locus ) != PIO_OK ) goto error;
+        }
+    }
+
+    bim_file->locus = loci.ptr;
+    bim_file->fp = bim_fp;
+    return PIO_OK;
+
+error:
+    if (bim_fp != NULL) fclose(bim_fp);
+    return PIO_ERROR;
 }
